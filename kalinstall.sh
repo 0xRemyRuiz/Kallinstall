@@ -140,6 +140,13 @@ exit
 
 # TODO: install oh my zsh and eventually kali's omz if using this script on parrot os
 
+run_as_vm() {
+	# TODO: maybe check if those lines already exist
+	xset -dpms && xset s off && echo -e "xset -dpms\nxset s off" >> /home/**/.bashrc && set_step 7
+}
+check_step 7 && check "Is your system running as a virutal machine? And if so, do you want to remove the lock screen timer?" &&\
+run_as_vm
+
 subl_install() {
 	wget -qO - https://download.sublimetext.com/sublimehq-pub.gpg | gpg --dearmor | tee /etc/apt/trusted.gpg.d/sublimehq-archive.gpg > /dev/null
 	echo "deb https://download.sublimetext.com/ apt/stable/" | tee /etc/apt/sources.list.d/sublime-text.list
