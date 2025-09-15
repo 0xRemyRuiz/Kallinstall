@@ -26,6 +26,7 @@ check() {
 	fi
 }
 cleanup() {
+	rm get-pip* 2>/dev/null
 	check "Do you want to full upgrade before exiting?" && apt-get update -y && apt-get full-upgrade
 	my_echo "Cleaning up now..."
 	apt-get autoremove
