@@ -1,14 +1,19 @@
 #!/bin/bash
 
+_KCRED="\e[31m"
+_KCGREEN="\e[32m"
+_KCLBLUE="\e[94m"
+_KRST="\e[0m"
+
 _STEPS_FILENAME=".install.steps"
 _STEPS=0
 _MSG_1="===>"
 _PREFIX_CHECK="####"
 my_echo() {
-	echo "$_MSG_1 $1"
+	echo -e "$_KCGREEN$_MSG_1 $1$_KRST"
 }
 check() {
-	read -p "$_PREFIX_CHECK $1 <Y/n>" p
+	echo -e -n "$_KCLBLUE$_PREFIX_CHECK $1$_KRST "; read -p "<Y/n>" p
 	# Parse a large number of possibilities to handle some typos
 	if [[ -z $p \
 		|| $p == "y" || $p == "yes" || $p == "ye" || $p == "yeah" \
@@ -19,6 +24,12 @@ check() {
 	else
 		false
 	fi
+}
+cleanup() {
+	check "Do you want to full upgrade before exiting?" && apt-get update -y && apt-get full-upgrade
+	my_echo "Cleaning up now..."
+	apt-get autoremove
+	exit
 }
 # we're using the power of 2 to "mask" steps already done
 # 0 no step is done yet
@@ -44,7 +55,7 @@ set_step() {
 	# add the step mask with an OR bitwise operation
 	_STEPS=$(( $_STEPS | $STEP ))
 	# we rewrite the file everytime it is needed there is no need to optimize this
-	rm $_STEPS_FILENAME &&\
+	rm -f $_STEPS_FILENAME
 	echo "_STEPS=$_STEPS" > $_STEPS_FILENAME &&\
 	echo "export _STEPS" >> $_STEPS_FILENAME &&\
 	chown root:root $_STEPS_FILENAME &&\
@@ -86,55 +97,47 @@ source $_STEPS_FILENAME
 my_echo "$0 Script is starting..."
 
 step1() {
-	check "First things first, do you want to change $(whoami) user's password?" &&\
-	passwd
-}
-check_step 1 && step1 && set_step 1
-
-# TODO: make a step mask so if a step fails so script can be relaunched without trying same steps again
-
-step2() {
 	my_echo "Making sure sources are correct"
 	sed -i 's/rolling main.*$/rolling main contrib non-free non-free-firmware/' /etc/apt/sources.list
 	# try to update or exit the script
 	apt-get update || (my_echo "apt-get update failed, make sure you have internet conenction "; exit)
 	apt-get install apt-transport-https && sed -i 's/http:/https:/' /etc/apt/sources.list
 }
+check_step 1 && step1 && set_step 1
+
+step2() {
+	check "Change your keyboard layout" &&\
+	dpkg-reconfigure keyboard-configuration
+}
 check_step 2 && step2 && set_step 2
 
 step3() {
-	check "Do you need to change your keyboard layout?" &&\
-	dpkg-reconfigure keyboard-configuration
+	my_echo "Making sure basic useful commands are installed"
+	apt-get install git gpg apt-transport-https xclip
 }
 check_step 3 && step3 && set_step 3
 
-step4() {
-	my_echo "Updating distro and installing basic stuff..."
-	apt-get full-upgrade && apt-get install git gpg apt-transport-https xclip
-}
-check_step 4 && step4 && set_step 4
-
 # TODO: maybe add ~/.local/bin to PATH env variable
 
-step5() {
+step4() {
 	my_echo "Installing python3 + venv + pip + pipx"
 	apt-get install python3-dev python3-pip python3-virtualenv python3-venv python3-scapy libssl-dev libpcap-dev
 	updatedb
-	pip install pipx && set_step 5
+	pip install pipx && set_step 4
 }
-check_step 5 && step5
+check_step 4 && step4
 
-step6() {
+step5() {
 	my_echo "Installing python2.7 + pip"
 	apt-get install python2.7
 	wget https://bootstrap.pypa.io/pip/2.7/get-pip.py
-	python2 get-pip.py && set_step 6
+	python2 get-pip.py && set_step 5
 }
-check_step 6 && step6
+check_step 5 && step5
 
 # Base installation with yes skips optionals
 check "Do you want to skip optionals?" &&\
-exit
+cleanup
 
 # TODO: continue coding and adding cool stuff (openvas?, docker?, portainer?)
 
@@ -142,61 +145,63 @@ exit
 
 run_as_vm() {
 	# TODO: maybe check if those lines already exist
-	xset -dpms && xset s off && echo -e "xset -dpms\nxset s off" >> /home/**/.bashrc && set_step 7
+	xset -dpms && xset s off && echo -e "xset -dpms\nxset s off" >> /home/**/.bashrc && set_step 6
 }
-check_step 7 && check "Is your system running as a virutal machine? And if so, do you want to remove the lock screen timer?" &&\
+check_step 6 && check "Is your system running as a virutal machine? And if so, do you want to remove the lock screen timer?" &&\
 run_as_vm
 
 subl_install() {
 	wget -qO - https://download.sublimetext.com/sublimehq-pub.gpg | gpg --dearmor | tee /etc/apt/trusted.gpg.d/sublimehq-archive.gpg > /dev/null
 	echo "deb https://download.sublimetext.com/ apt/stable/" | tee /etc/apt/sources.list.d/sublime-text.list
-	apt-get update -y && apt-get install sublime-text -y && set_step 8
+	apt-get update -y && apt-get install sublime-text -y && set_step 7
 }
-check_step 8 && check "Do you want to install SublimeText?" &&\
+check_step 7 && check "Do you want to install SublimeText?" &&\
 subl_install
 
 chkrk_install() {
 	apt-get install chkrootkit -y
 	my_echo "Running chkrootkit. Wait!"
-	chkrootkit > ./chkrootkit_log.txt && set_step 9
+	chkrootkit > ./chkrootkit_log.txt && set_step 8
 }
-check_step 9 && check "Do you want to install chkrootkit?" &&\
+check_step 8 && check "Do you want to install chkrootkit?" &&\
 chkrk_install
 
 rkhunter_install() {
 	apt-get install rkhunter -y
 	rkhunter --update
-	rkhunter -c && set_step 10
+	rkhunter -c && set_step 9
 }
-check_step 10 && check "Do you want to install rkhunter?" &&\
+check_step 9 && check "Do you want to install rkhunter?" &&\
 rkhunter_install
 
 lynis_install() {
 	apt-get install lynis -y
 	my_echo "Running Lynis, please wait..."
-	lynis audit system > ./.lynis_log.txt && set_step 11
+	lynis audit system > ./.lynis_log.txt && set_step 10
 }
-check_step 11 && check "Do you want to install lynis?" &&\
+check_step 10 && check "Do you want to install lynis?" &&\
 lynis_install
 
 opencanary_install() {
 	virtualenv env/ #?? ??
 	. env/bin/activate
-	pip install opencanary && set_step 12
+	pip install opencanary && set_step 11
 }
-# check_step 12 && check "Do you want to install opencanary?" &&\
+# check_step 11 && check "Do you want to install opencanary?" &&\
 # opencanary_install
 
 updatedb
 
 # TODO: install htool and update path variables (both user and root?)
 Htoolkit_install() {
-	set_step 13
+	set_step 12
 }
-# check_step 13 && check "Do you want to install Htoolkit?" &&\
+# check_step 12 && check "Do you want to install Htoolkit?" &&\
 # Htoolkit_install
 
 # TODO: remove the install steps file
 # rm $_STEPS_FILENAME
+
+cleanup
 
 
